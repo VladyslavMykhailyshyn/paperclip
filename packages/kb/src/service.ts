@@ -42,11 +42,11 @@ export interface KbPersistence {
     documentId: string,
     companyId: string,
     chunks: Array<{
+      chunkId: string;
       ordinal: number;
       text: string;
       contextSummary?: string;
       tokenCount: number;
-      qdrantPointId: string;
       embeddingModel: string;
       embeddingDim: number;
     }>,
@@ -104,19 +104,19 @@ export class KbService {
       rawChunks.map(async (c) => {
         const contextSummary = await summarizer.summarize(input.title ?? null, body, c.text);
         const embedInput = contextSummary ? `${contextSummary}\n\n${c.text}` : c.text;
-        return { ...c, contextSummary, embedInput };
+        return { ...c, chunkId: crypto.randomUUID(), contextSummary, embedInput };
       }),
     );
 
     const vectors = await embeddings.embed(enriched.map((e) => e.embedInput));
 
     const points = enriched.map((e, idx) => ({
-      id: crypto.randomUUID(),
+      id: e.chunkId,
       vector: vectors[idx]!.values,
       payload: {
         companyId: input.scope.companyId,
         documentId,
-        chunkId: crypto.randomUUID(),
+        chunkId: e.chunkId,
         ordinal: e.ordinal,
         visibility: input.visibility ?? "company",
         sourceType: input.sourceType,
@@ -131,12 +131,12 @@ export class KbService {
     await persist.insertChunks(
       documentId,
       input.scope.companyId,
-      enriched.map((e, idx) => ({
+      enriched.map((e) => ({
+        chunkId: e.chunkId,
         ordinal: e.ordinal,
         text: e.text,
         contextSummary: e.contextSummary || undefined,
         tokenCount: e.tokenCount,
-        qdrantPointId: points[idx]!.id,
         embeddingModel: embeddings.model,
         embeddingDim: embeddings.dim,
       })),

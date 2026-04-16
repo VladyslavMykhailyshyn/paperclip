@@ -484,38 +484,117 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
       "paperclipKbStore",
       "Store a document in the paperclip knowledge base. The document is chunked, summarized, embedded, and indexed asynchronously. Returns the documentId.",
       kbStoreSchema,
-      async (input) => client.requestJson("POST", "/kb/documents", { body: input }),
+      async ({ scope, ...rest }) =>
+        client.requestJson(
+          "POST",
+          `/companies/${encodeURIComponent(scope.companyId)}/kb/documents`,
+          {
+            body: {
+              ...rest,
+              scope: {
+                projectId: scope.projectId ?? null,
+                goalId: scope.goalId ?? null,
+                agentId: scope.agentId ?? null,
+              },
+            },
+          },
+        ),
     ),
     makeTool(
       "paperclipKbSearch",
       "Hybrid semantic search across the knowledge base with optional reranking. Scope is always enforced by companyId.",
       kbSearchSchema,
-      async (input) => client.requestJson("POST", "/kb/search", { body: input }),
+      async ({ scope, ...rest }) =>
+        client.requestJson(
+          "POST",
+          `/companies/${encodeURIComponent(scope.companyId)}/kb/search`,
+          {
+            body: {
+              ...rest,
+              scope: {
+                projectId: scope.projectId ?? null,
+                goalId: scope.goalId ?? null,
+                agentId: scope.agentId ?? null,
+              },
+            },
+          },
+        ),
     ),
     makeTool(
       "paperclipKbCite",
       "Fetch a single chunk by id for citation/attribution.",
       kbCiteSchema,
       async ({ chunkId, companyId }) =>
-        client.requestJson("GET", `/kb/chunks/${encodeURIComponent(chunkId)}?companyId=${companyId}`),
+        client.requestJson(
+          "GET",
+          `/kb/chunks/${encodeURIComponent(chunkId)}?companyId=${encodeURIComponent(companyId)}`,
+        ),
     ),
     makeTool(
       "paperclipMemoryUpsert",
       "Write a fact to the agent memory system. Zep applies ADD/UPDATE/DELETE/NOOP via its fact-distillation pipeline.",
       memoryUpsertSchema,
-      async (input) => client.requestJson("POST", "/memory/facts", { body: input }),
+      async ({ identity, ...rest }) =>
+        client.requestJson(
+          "POST",
+          `/companies/${encodeURIComponent(identity.companyId)}/memory/facts`,
+          {
+            body: {
+              ...rest,
+              identity: {
+                scope: identity.scope,
+                scopeRefId: identity.scopeRefId ?? null,
+                projectId: identity.projectId ?? null,
+                goalId: identity.goalId ?? null,
+                agentId: identity.agentId ?? null,
+              },
+            },
+          },
+        ),
     ),
     makeTool(
       "paperclipMemoryRecall",
       "Pull top-N relevant facts for the current scope. Returns compressed fact tokens (~90% smaller than raw transcripts).",
       memoryRecallSchema,
-      async (input) => client.requestJson("POST", "/memory/recall", { body: input }),
+      async ({ identity, ...rest }) =>
+        client.requestJson(
+          "POST",
+          `/companies/${encodeURIComponent(identity.companyId)}/memory/recall`,
+          {
+            body: {
+              ...rest,
+              identity: {
+                scope: identity.scope,
+                scopeRefId: identity.scopeRefId ?? null,
+                projectId: identity.projectId ?? null,
+                goalId: identity.goalId ?? null,
+                agentId: identity.agentId ?? null,
+              },
+            },
+          },
+        ),
     ),
     makeTool(
       "paperclipMemoryPin",
       "Pin or unpin a fact to protect it from temporal eviction.",
       memoryPinSchema,
-      async (input) => client.requestJson("POST", "/memory/pin", { body: input }),
+      async ({ identity, ...rest }) =>
+        client.requestJson(
+          "POST",
+          `/companies/${encodeURIComponent(identity.companyId)}/memory/pin`,
+          {
+            body: {
+              ...rest,
+              identity: {
+                scope: identity.scope,
+                scopeRefId: identity.scopeRefId ?? null,
+                projectId: identity.projectId ?? null,
+                goalId: identity.goalId ?? null,
+                agentId: identity.agentId ?? null,
+              },
+            },
+          },
+        ),
     ),
     makeTool(
       "paperclipApiRequest",
