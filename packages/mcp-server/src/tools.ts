@@ -118,6 +118,76 @@ const createApprovalToolSchema = z.object({
   companyId: companyIdOptional,
 }).merge(createApprovalSchema);
 
+const kbVisibilityEnum = z.enum(["company", "project", "goal", "agent", "private"]);
+const kbSourceTypeEnum = z.enum([
+  "upload",
+  "agent_output",
+  "issue_comment",
+  "document",
+  "web_fetch",
+  "heartbeat_run",
+]);
+const kbScopeSchema = z.object({
+  companyId: z.string().uuid(),
+  projectId: z.string().uuid().nullable().optional(),
+  goalId: z.string().uuid().nullable().optional(),
+  agentId: z.string().uuid().nullable().optional(),
+});
+const kbStoreSchema = z.object({
+  scope: kbScopeSchema,
+  sourceType: kbSourceTypeEnum,
+  sourceRef: z.string().optional(),
+  title: z.string().optional(),
+  text: z.string().min(1),
+  mimeType: z.string().optional(),
+  visibility: kbVisibilityEnum.optional(),
+  ownerAgentId: z.string().uuid().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+const kbSearchSchema = z.object({
+  scope: kbScopeSchema,
+  query: z.string().min(1),
+  topK: z.number().int().min(1).max(50).optional(),
+  rerank: z.boolean().optional(),
+  visibilityFilter: z.array(kbVisibilityEnum).optional(),
+  sourceTypes: z.array(kbSourceTypeEnum).optional(),
+});
+const kbCiteSchema = z.object({
+  chunkId: z.string().uuid(),
+  companyId: z.string().uuid(),
+});
+
+const memoryScopeEnum = z.enum(["company", "project", "goal", "agent"]);
+const memoryFactKindEnum = z.enum(["preference", "decision", "outcome", "person", "system"]);
+const memoryIdentitySchema = z.object({
+  companyId: z.string().uuid(),
+  scope: memoryScopeEnum,
+  scopeRefId: z.string().uuid().nullable().optional(),
+  projectId: z.string().uuid().nullable().optional(),
+  goalId: z.string().uuid().nullable().optional(),
+  agentId: z.string().uuid().nullable().optional(),
+});
+const memoryUpsertSchema = z.object({
+  identity: memoryIdentitySchema,
+  content: z.string().min(1),
+  factKind: memoryFactKindEnum.optional(),
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant", "system"]), content: z.string() }))
+    .optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+const memoryRecallSchema = z.object({
+  identity: memoryIdentitySchema,
+  query: z.string().min(1),
+  limit: z.number().int().min(1).max(50).optional(),
+  includePinned: z.boolean().optional(),
+});
+const memoryPinSchema = z.object({
+  identity: memoryIdentitySchema,
+  factId: z.string().min(1),
+  pinned: z.boolean(),
+});
+
 const apiRequestSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   path: z.string().min(1),
@@ -409,6 +479,43 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
         client.requestJson("POST", `/approvals/${encodeURIComponent(approvalId)}/comments`, {
           body: { body },
         }),
+    ),
+    makeTool(
+      "paperclipKbStore",
+      "Store a document in the paperclip knowledge base. The document is chunked, summarized, embedded, and indexed asynchronously. Returns the documentId.",
+      kbStoreSchema,
+      async (input) => client.requestJson("POST", "/kb/documents", { body: input }),
+    ),
+    makeTool(
+      "paperclipKbSearch",
+      "Hybrid semantic search across the knowledge base with optional reranking. Scope is always enforced by companyId.",
+      kbSearchSchema,
+      async (input) => client.requestJson("POST", "/kb/search", { body: input }),
+    ),
+    makeTool(
+      "paperclipKbCite",
+      "Fetch a single chunk by id for citation/attribution.",
+      kbCiteSchema,
+      async ({ chunkId, companyId }) =>
+        client.requestJson("GET", `/kb/chunks/${encodeURIComponent(chunkId)}?companyId=${companyId}`),
+    ),
+    makeTool(
+      "paperclipMemoryUpsert",
+      "Write a fact to the agent memory system. Zep applies ADD/UPDATE/DELETE/NOOP via its fact-distillation pipeline.",
+      memoryUpsertSchema,
+      async (input) => client.requestJson("POST", "/memory/facts", { body: input }),
+    ),
+    makeTool(
+      "paperclipMemoryRecall",
+      "Pull top-N relevant facts for the current scope. Returns compressed fact tokens (~90% smaller than raw transcripts).",
+      memoryRecallSchema,
+      async (input) => client.requestJson("POST", "/memory/recall", { body: input }),
+    ),
+    makeTool(
+      "paperclipMemoryPin",
+      "Pin or unpin a fact to protect it from temporal eviction.",
+      memoryPinSchema,
+      async (input) => client.requestJson("POST", "/memory/pin", { body: input }),
     ),
     makeTool(
       "paperclipApiRequest",
