@@ -55,6 +55,64 @@ export function noopContextualSummarizer(): ContextualSummarizer {
   };
 }
 
+export interface OllamaSummarizerConfig {
+  baseUrl?: string;
+  model?: string;
+  maxSummaryTokens?: number;
+}
+
+export function createOllamaContextualSummarizer(
+  config: OllamaSummarizerConfig = {},
+): ContextualSummarizer {
+  const baseUrl = (config.baseUrl ?? "http://localhost:11434").replace(/\/+$/, "");
+  const model = config.model ?? "llama3.2";
+  const maxTokens = config.maxSummaryTokens ?? DEFAULT_MAX_TOKENS;
+
+  return {
+    summarize: async (docTitle, fullDoc, chunk): Promise<string> => {
+      const titleLine = docTitle ? `Document title: ${docTitle}\n\n` : "";
+      const res = await fetch(`${baseUrl}/api/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          stream: false,
+          system: SYSTEM_PROMPT,
+          prompt: `${titleLine}Full document:\n<document>\n${truncate(fullDoc, 20000)}\n</document>\n\nChunk to contextualize:\n<chunk>\n${chunk}\n</chunk>\n\nReturn ONLY the contextual prefix.`,
+          options: { num_predict: maxTokens },
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Ollama generate failed ${res.status}: ${detail.slice(0, 200)}`);
+      }
+      const body = (await res.json()) as { response?: string };
+      return (body.response ?? "").trim();
+    },
+  };
+}
+
+export function resolveContextualSummarizer(
+  name: string | undefined,
+  config:
+    | { apiKey?: string; model?: string; baseUrl?: string; maxSummaryTokens?: number }
+    | undefined,
+): ContextualSummarizer {
+  if (!name || name === "none" || name === "noop") return noopContextualSummarizer();
+  switch (name) {
+    case "ollama":
+      return createOllamaContextualSummarizer({
+        baseUrl: config?.baseUrl,
+        model: config?.model,
+        maxSummaryTokens: config?.maxSummaryTokens,
+      });
+    case "anthropic":
+      return createAnthropicContextualSummarizer(config?.apiKey ? config : null);
+    default:
+      throw new Error(`Unknown contextual summarizer: ${name}. Supported: ollama, anthropic, none.`);
+  }
+}
+
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return `${s.slice(0, max)}\n... [truncated]`;

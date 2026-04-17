@@ -3,6 +3,7 @@ export { chunkText, estimateTokens } from "./chunker.js";
 export {
   createVoyageProvider,
   createOpenAIEmbeddingProvider,
+  createOllamaEmbeddingProvider,
   resolveEmbeddingProvider,
   EmbeddingNotConfiguredError,
 } from "./embeddings.js";
@@ -14,7 +15,9 @@ export {
 } from "./rerank.js";
 export {
   createAnthropicContextualSummarizer,
+  createOllamaContextualSummarizer,
   noopContextualSummarizer,
+  resolveContextualSummarizer,
   ContextualSummarizerNotConfiguredError,
 } from "./contextual-summary.js";
 export { createQdrantAdapter, QdrantNotConfiguredError } from "./qdrant.js";

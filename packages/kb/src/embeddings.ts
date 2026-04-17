@@ -77,17 +77,64 @@ export function createOpenAIEmbeddingProvider(config: OpenAIEmbeddingConfig | nu
   };
 }
 
+export interface OllamaEmbeddingConfig {
+  baseUrl?: string;
+  model?: string;
+  dim?: number;
+}
+
+const OLLAMA_DIMS: Record<string, number> = {
+  "nomic-embed-text": 768,
+  "mxbai-embed-large": 1024,
+  "bge-m3": 1024,
+  "snowflake-arctic-embed": 1024,
+  "all-minilm": 384,
+};
+
+export function createOllamaEmbeddingProvider(config: OllamaEmbeddingConfig = {}): EmbeddingProvider {
+  const baseUrl = (config.baseUrl ?? "http://localhost:11434").replace(/\/+$/, "");
+  const model = config.model ?? "nomic-embed-text";
+  const dim = config.dim ?? OLLAMA_DIMS[model] ?? 768;
+
+  return {
+    name: "ollama",
+    model,
+    dim,
+    embed: async (texts: string[]): Promise<EmbeddingVector[]> => {
+      if (texts.length === 0) return [];
+      const res = await fetch(`${baseUrl}/api/embed`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, input: texts }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Ollama embed failed ${res.status}: ${detail.slice(0, 200)}`);
+      }
+      const body = (await res.json()) as { embeddings?: number[][] };
+      const rows = body.embeddings ?? [];
+      return rows.map((values) => ({ model, dim, values }));
+    },
+  };
+}
+
 export function resolveEmbeddingProvider(
   name: string,
-  config: { apiKey?: string; model?: string } | undefined,
+  config: { apiKey?: string; model?: string; baseUrl?: string; dim?: number } | undefined,
 ): EmbeddingProvider {
   const apiKey = config?.apiKey;
   switch (name) {
+    case "ollama":
+      return createOllamaEmbeddingProvider({
+        baseUrl: config?.baseUrl,
+        model: config?.model,
+        dim: config?.dim,
+      });
     case "voyage":
       return createVoyageProvider(apiKey ? { apiKey, model: config?.model } : null);
     case "openai":
       return createOpenAIEmbeddingProvider(apiKey ? { apiKey, model: config?.model } : null);
     default:
-      throw new Error(`Unknown embedding provider: ${name}. Supported: voyage, openai.`);
+      throw new Error(`Unknown embedding provider: ${name}. Supported: ollama, voyage, openai.`);
   }
 }

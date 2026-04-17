@@ -15,6 +15,32 @@ services:
       timeout: 5s
       retries: 10
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_EMBED_MODEL:-nomic-embed-text} &&
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_CHAT_MODEL:-llama3.2} &&
+        echo 'ollama models ready'
+      "
+    restart: "no"
+
   neo4j:
     image: neo4j:5.26
     restart: unless-stopped
@@ -41,6 +67,8 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
@@ -48,10 +76,18 @@ services:
       ZEP_GRAPHITI__NEO4J_URI: bolt://neo4j:7687
       ZEP_GRAPHITI__NEO4J_USER: neo4j
       ZEP_GRAPHITI__NEO4J_PASSWORD: paperclip-dev
-      ZEP_LLM__SERVICE: openai
-      ZEP_LLM__OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ZEP_EMBEDDING__SERVICE: openai
-      ZEP_EMBEDDING__OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # LLM: default to local Ollama via its OpenAI-compatible endpoint.
+      # Override by setting ZEP_LLM__SERVICE=anthropic and ZEP_LLM__ANTHROPIC_API_KEY=...
+      ZEP_LLM__SERVICE: ${ZEP_LLM_SERVICE:-openai}
+      ZEP_LLM__OPENAI_API_KEY: ${ZEP_LLM_OPENAI_KEY:-ollama}
+      ZEP_LLM__OPENAI_BASE_URL: ${ZEP_LLM_BASE_URL:-http://ollama:11434/v1}
+      ZEP_LLM__MODEL: ${ZEP_LLM_MODEL:-llama3.2}
+      ZEP_LLM__ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Embeddings: default to local Ollama
+      ZEP_EMBEDDING__SERVICE: ${ZEP_EMBEDDING_SERVICE:-openai}
+      ZEP_EMBEDDING__OPENAI_API_KEY: ${ZEP_EMBEDDING_OPENAI_KEY:-ollama}
+      ZEP_EMBEDDING__OPENAI_BASE_URL: ${ZEP_EMBEDDING_BASE_URL:-http://ollama:11434/v1}
+      ZEP_EMBEDDING__MODEL: ${ZEP_EMBEDDING_MODEL:-nomic-embed-text}
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:8000/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -60,5 +96,6 @@ services:
 
 volumes:
   qdrant_storage:
+  ollama_models:
   neo4j_data:
   neo4j_logs:
