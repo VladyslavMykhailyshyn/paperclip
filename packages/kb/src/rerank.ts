@@ -1,3 +1,4 @@
+import { CohereClient } from "cohere-ai";
 import type { RerankerProvider } from "./types.js";
 
 export class RerankerNotConfiguredError extends Error {
@@ -13,13 +14,25 @@ export interface CohereRerankConfig {
 }
 
 export function createCohereReranker(config: CohereRerankConfig | null): RerankerProvider {
-  const model = config?.model ?? "rerank-3";
+  const model = config?.model ?? "rerank-english-v3.0";
+  const client = config ? new CohereClient({ token: config.apiKey }) : null;
+
   return {
     name: "cohere",
     model,
-    rerank: async (_query, _candidates, _topK) => {
-      if (!config) throw new RerankerNotConfiguredError("cohere");
-      throw new Error("CohereReranker not yet wired. Install cohere-ai and implement.");
+    rerank: async (query, candidates, topK) => {
+      if (!client) throw new RerankerNotConfiguredError("cohere");
+      if (candidates.length === 0) return [];
+      const response = await client.rerank({
+        model,
+        query,
+        documents: candidates.map((c) => c.text),
+        topN: Math.min(topK, candidates.length),
+      });
+      return (response.results ?? []).map((r) => ({
+        id: candidates[r.index]!.id,
+        score: r.relevanceScore ?? 0,
+      }));
     },
   };
 }
