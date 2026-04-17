@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import type { BillingType, ExecutionWorkspace, ExecutionWorkspaceConfig } from "@paperclipai/shared";
+import { enrichContextWithKbMemoryHints } from "./heartbeat-kb-hook.js";
 import {
   agents,
   agentRuntimeState,
@@ -4453,6 +4454,15 @@ export function heartbeatService(db: Db) {
 
     const agent = await getAgent(agentId);
     if (!agent) throw notFound("Agent not found");
+
+    Object.assign(
+      enrichedContextSnapshot,
+      enrichContextWithKbMemoryHints(enrichedContextSnapshot, {
+        companyId: agent.companyId,
+        agentId,
+        issueId: issueId ?? null,
+      }),
+    );
     const explicitResumeSession = await resolveExplicitResumeSessionOverride(agent, payload, taskKey);
     if (explicitResumeSession) {
       enrichedContextSnapshot.resumeFromRunId = explicitResumeSession.resumeFromRunId;
